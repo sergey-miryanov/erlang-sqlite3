@@ -1208,7 +1208,7 @@ list_init([H|T]) -> [H|list_init(T)].
 %% @end
 %% @type sqlite_error() = {'error', integer(), string()} | {'error', any()}.
 %% 
-%% Errors occuring on the C side are represented by 3-element tuples containing 
+%% Errors reported by SQLite side are represented by 3-element tuples containing 
 %% atom 'error', SQLite result code ([http://www.sqlite.org/c3ref/c_abort.html], 
 %% [http://www.sqlite.org/c3ref/c_busy_recovery.html]) and an English-language error
 %% message.
@@ -1220,8 +1220,10 @@ list_init([H|T]) -> [H|list_init(T)].
 %% The result returned by functions which call the database but don't return
 %% any records.
 %% @end
-%% @type sql_result() = sql_non_query_result() | [{columns, [string()]} | {rows, [tuple()]}].
-%% The result returned by functions which query the database.
+%% @type sql_result() = sql_non_query_result() | [{columns, [string()]} | {rows, [tuple()]} | sqlite_error()].
+%% The result returned by functions which query the database. If there are errors,
+%% list of three tuples is returned: [{columns, ListOfColumnNames}, {rows, ListOfResults}, ErrorTuple].
+%% If there are no errors, the list has two elements.
 %% @end
 %%--------------------------------------------------------------------
 

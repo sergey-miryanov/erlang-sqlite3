@@ -49,7 +49,8 @@ all_test_() ->
       ?FuncTest(nonexistent_table_info),
       ?FuncTest(large_number),
       ?FuncTest(unicode),
-      ?FuncTest(acc_string_encoding)]}.
+      ?FuncTest(acc_string_encoding),
+      ?FuncTest(large_offset)]}.
 
 open_db() ->
     sqlite3:open(ct, [in_memory]).
@@ -294,6 +295,13 @@ script_test() ->
         [ok, {error, 1, "near \"SYNTAX\": syntax error"}], 
         sqlite3:sql_exec_script(script, BadScript)),
     sqlite3:close(script).
+
+large_offset() ->
+	drop_table_if_exists(ct, large_offset),
+	ok = sqlite3:create_table(ct, large_offset, [{id, integer}]),
+	?assertEqual(
+	    [{columns, ["id"]}, {rows, []}, {error, 20, "datatype mismatch"}],
+	    sqlite3:sql_exec(ct, "select * from large_offset limit 1 offset 9223372036854775808")).
 
 % create, read, update, delete
 %%====================================================================

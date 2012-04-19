@@ -38,4 +38,4 @@
 -type sqlite_error() :: {error, integer(), string()} | {error, term()}.
 -type sql_params() :: [sql_value() | {atom() | string() | integer(), sql_value()}].
 -type sql_non_query_result() :: ok | sqlite_error() | {rowid, integer()}.
--type sql_result() :: sql_non_query_result() | [{columns, [column_id()]} | {rows, [tuple()]}].
+-type sql_result() :: sql_non_query_result() | [{columns, [column_id()]} | {rows, [tuple()]} | sqlite_error()].
