@@ -4,6 +4,8 @@
 %%% @copyright 21 Jun 2008 by Tee Teoh 
 %%% @version 1.0.0
 %%% @doc Library module for sqlite3
+%%%
+%%% @type table_id() = atom() | binary() | string().
 %%% @end
 %%%-------------------------------------------------------------------
 -module(sqlite3_lib).
@@ -21,7 +23,6 @@
 %% API
 %%====================================================================
 %%--------------------------------------------------------------------
-%% @spec col_type_to_string(Type :: atom() | string()) -> string()
 %% @doc Maps sqlite3 column type.
 %% @end
 %%--------------------------------------------------------------------
@@ -42,7 +43,6 @@ col_type_to_string(String) when is_list(String) ->
     String.
 
 %%--------------------------------------------------------------------
-%% @spec col_type_to_atom(Type :: string()) -> atom()
 %% @doc Maps sqlite3 column type.
 %% @end
 %%--------------------------------------------------------------------
@@ -60,7 +60,6 @@ col_type_to_atom(String) ->
 
 
 %%--------------------------------------------------------------------
-%% @spec value_to_sql_unsafe(Value :: sql_value()) -> iolist()
 %% @doc 
 %%    Converts an Erlang term to an SQL string.
 %%    Currently supports integers, floats, 'null' atom, and iodata 
@@ -84,7 +83,6 @@ value_to_sql_unsafe(X) ->
     end.
 
 %%--------------------------------------------------------------------
-%% @spec value_to_sql(Value :: sql_value()) -> iolist()
 %% @doc 
 %%    Converts an Erlang term to an SQL string.
 %%    Currently supports integers, floats, 'null' atom, and iodata 
@@ -105,7 +103,6 @@ value_to_sql(X) ->
     end.
 
 %%--------------------------------------------------------------------
-%% @spec sql_to_value(String :: string()) -> sql_value()
 %% @doc 
 %%    Converts an SQL value to an Erlang term.
 %% @end
@@ -128,7 +125,6 @@ sql_to_value(String) ->
     end.
 
 %%--------------------------------------------------------------------
-%% @spec write_value_sql(Value :: [sql_value()]) -> iolist()
 %% @doc 
 %%    Creates the values portion of the sql stmt.
 %% @end
@@ -139,17 +135,14 @@ write_value_sql(Values) ->
 
     
 %%--------------------------------------------------------------------
-%% @spec write_col_sql([atom()]) -> iolist()
 %% @doc Creates the column/data stmt for SQL.
 %% @end
 %%--------------------------------------------------------------------
--spec write_col_sql([atom()]) -> iolist().
+-spec write_col_sql([column_id()]) -> iolist().
 write_col_sql(Cols) ->
-    map_intersperse(fun atom_to_list/1, Cols, ", ").
+    map_intersperse(fun to_iolist/1, Cols, ", ").
 
 %%--------------------------------------------------------------------
-%% @spec escape(IoData :: iodata()) -> iodata()
-%% 
 %% @doc Returns copy of IoData with all ' replaced by ''
 %% @end
 %%--------------------------------------------------------------------
@@ -157,8 +150,6 @@ write_col_sql(Cols) ->
 escape(IoData) -> re:replace(IoData, "'", "''", [global, unicode]).
 
 %%--------------------------------------------------------------------
-%% @spec bin_to_hex(Binary :: binary()) -> binary()
-%% 
 %% @doc Converts a plain binary to its hexadecimal encoding, to be
 %%      passed as a blob literal.
 %% @end
@@ -167,7 +158,6 @@ escape(IoData) -> re:replace(IoData, "'", "''", [global, unicode]).
 bin_to_hex(Binary) -> << <<(half_byte_to_hex(X)):8>> || <<X:4>> <= Binary>>.
 
 %%--------------------------------------------------------------------
-%% @spec update_set_sql([{Column :: atom(), Value :: sql_value()}]) -> iolist()
 %% @doc 
 %%    Creates update set stmt.
 %%    Currently supports integer, double/float and strings.
@@ -182,156 +172,118 @@ update_set_sql(Data) ->
     map_intersperse(ColValueToSqlFun, Data, ", ").
 
 %%--------------------------------------------------------------------
-%% @spec read_cols_sql(Columns::[atom()]) -> iolist()
 %% @doc
 %%    Creates list of columns for select stmt.
 %% @end
 %%--------------------------------------------------------------------
--spec read_cols_sql([atom()]) -> iolist().
+-spec read_cols_sql([column_id()]) -> iolist().
 read_cols_sql(Columns) ->
-    map_intersperse(fun atom_to_list/1, Columns, ", ").
+    map_intersperse(fun to_iolist/1, Columns, ", ").
 
 %%--------------------------------------------------------------------
-%% @spec create_table_sql(Tbl :: atom(), ColumnData) -> iolist()
-%%       Tbl = atom()
-%%       ColumnData = {Column, Type} | {Column, Type, Constraints} 
-%%       Column = atom()
-%%       Type = atom()
-%%       Constraints = [any()]
 %% @doc Generates a table create stmt in SQL.
 %% @end
 %%--------------------------------------------------------------------
--spec create_table_sql(atom(), table_info()) -> iolist().
+-spec create_table_sql(table_id(), table_info()) -> iolist().
 create_table_sql(Tbl, Columns) ->
-    ["CREATE TABLE ", atom_to_list(Tbl), " (",
-     map_intersperse(fun column_sql_for_create_table/1, Columns, ", "), ");"].
+    {Type, TName} = encode_table_id(Tbl),
+    ["CREATE TABLE ", TName, " (",
+     map_intersperse(fun column_sql_for_create_table/1, Columns, ", "),
+     ", CHECK ('", Type, "'='", Type, "'));"].
 
 %%--------------------------------------------------------------------
-%% @spec create_table_sql(Tbl :: atom(), ColumnData, TableConstraints) -> iolist()
-%%       Tbl = atom()
-%%       ColumnData = {Column, Type} | {Column, Type, Constraints} 
-%%       Column = atom()
-%%       Type = atom()
-%%       Constraints = [any()]
-%%       TableConstraints = [any()]
 %% @doc Generates a table create stmt in SQL.
 %% @end
 %%--------------------------------------------------------------------
--spec create_table_sql(atom(), table_info(), table_constraints()) -> iolist().
+-spec create_table_sql(table_id(), table_info(), table_constraints()) -> iolist().
 create_table_sql(Tbl, Columns, TblConstraints) ->
-    ["CREATE TABLE ", atom_to_list(Tbl), " (",
+    {Type, TName} = encode_table_id(Tbl),
+    ["CREATE TABLE ", TName, " (",
      map_intersperse(fun column_sql_for_create_table/1, Columns, ", "), ", ",
      table_constraint_sql(TblConstraints), 
-     ");"].
+     ", CHECK ('", Type, "'='", Type, "'));"].
 
 %%--------------------------------------------------------------------
-%% @spec update_sql(Tbl, Key, Value, Data) -> iolist()
-%%        Tbl = atom()
-%%        Key = atom()
-%%        Value = sql_value()
-%%        Data = [{Column :: atom(), Value :: sql_value()}]
 %% @doc 
 %%    Using Key as the column name and Data as list of column names 
 %%    and values pairs it creates the proper update SQL stmt for the 
 %%    record with matching Value.
 %% @end
 %%--------------------------------------------------------------------
--spec update_sql(atom(), atom(), sql_value(), [{atom(), sql_value()}]) -> iolist().
+-spec update_sql(table_id(), column_id(), sql_value(), [{column_id(), sql_value()}]) -> iolist().
 update_sql(Tbl, Key, Value, Data) ->
-    ["UPDATE ", atom_to_list(Tbl), " SET ", update_set_sql(Data), 
-     " WHERE ", atom_to_list(Key), " = ", value_to_sql(Value), ";"].
+    {_, TName} = encode_table_id(Tbl),
+    ["UPDATE ", TName, " SET ", update_set_sql(Data), 
+     " WHERE ", to_iolist(Key), " = ", value_to_sql(Value), ";"].
 
 %%--------------------------------------------------------------------
-%% @spec write_sql(Tbl, Data) -> iolist()
-%%       Tbl = atom()
-%%       Data = [{ColName :: atom(), Value :: sql_value()}]
 %% @doc Taking Data as list of column names and values pairs it creates the
 %%      proper insertion SQL stmt.
 %% @end
 %%--------------------------------------------------------------------
--spec write_sql(atom(), [{atom(), sql_value()}]) -> iolist().
+-spec write_sql(table_id(), [{column_id(), sql_value()}]) -> iolist().
 write_sql(Tbl, Data) ->
     {Cols, Values} = lists:unzip(Data),
-    ["INSERT INTO ", atom_to_list(Tbl), " (", write_col_sql(Cols), 
+    ["INSERT INTO ", to_iolist(Tbl), " (", write_col_sql(Cols), 
      ") values (", write_value_sql(Values), ");"].
 
 %%--------------------------------------------------------------------
-%% @spec read_sql(Tbl) -> iolist()
-%%       Tbl = atom()
 %% @doc Returns all records from table Tbl.
 %% @end
 %%--------------------------------------------------------------------
--spec read_sql(atom()) -> iolist().
+-spec read_sql(table_id()) -> iolist().
 read_sql(Tbl) ->
-    ["SELECT * FROM ", atom_to_list(Tbl), ";"].
+    ["SELECT * FROM ", to_iolist(Tbl), ";"].
 
 %%--------------------------------------------------------------------
-%% @spec read_sql(Tbl, Columns) -> iolist()
-%%        Tbl = atom()
-%%        Columns = [atom()]
 %% @doc
 %%    Returns only specified Columns of all records from table Tbl.
 %% @end
 %%--------------------------------------------------------------------
--spec read_sql(atom(), [atom()]) -> iolist().
+-spec read_sql(table_id(), [column_id()]) -> iolist().
 read_sql(Tbl, Columns) ->
     ["SELECT ", read_cols_sql(Columns), " FROM ",
-     atom_to_list(Tbl), ";"].
+     to_iolist(Tbl), ";"].
 
 %%--------------------------------------------------------------------
-%% @spec read_sql(Tbl, Key, Value) -> iolist()
-%%       Tbl = atom()
-%%       Key = atom()
-%%       Value = sql_value()
 %% @doc Using Key as the column name searches for the record with
 %%      matching Value.
 %% @end
 %%--------------------------------------------------------------------
--spec read_sql(atom(), atom(), sql_value()) -> iolist().
+-spec read_sql(table_id(), column_id(), sql_value()) -> iolist().
 read_sql(Tbl, Key, Value) ->
-    ["SELECT * FROM ", atom_to_list(Tbl), " WHERE ", atom_to_list(Key), 
+    ["SELECT * FROM ", to_iolist(Tbl), " WHERE ", to_iolist(Key), 
      " = ", value_to_sql(Value), ";"].
 
 %%--------------------------------------------------------------------
-%% @spec read_sql(Tbl, Key, Value, Columns) -> iolist()
-%%        Tbl = atom()
-%%        Key = atom()
-%%        Value = sql_value()
-%%        Columns = [atom()]
 %% @doc
 %%    Using Key as the column name searches for the record with
 %%    matching Value and returns only specified Columns.
 %% @end
 %%--------------------------------------------------------------------
--spec read_sql(atom(), atom(), sql_value(), [atom()]) -> iolist().
+-spec read_sql(table_id(), column_id(), sql_value(), [column_id()]) -> iolist().
 read_sql(Tbl, Key, Value, Columns) ->
     ["SELECT ", read_cols_sql(Columns), " FROM ",
-     atom_to_list(Tbl), " WHERE ", atom_to_list(Key), " = ", 
+     to_iolist(Tbl), " WHERE ", to_iolist(Key), " = ", 
      value_to_sql(Value), ";"].
 
 %%--------------------------------------------------------------------
-%% @spec delete_sql(Tbl, Key, Value) -> iolist()
-%%       Tbl = atom()
-%%       Key = atom()
-%%       Value = sql_value()
 %% @doc Using Key as the column name searches for the record with
 %%      matching Value then deletes that record.
 %% @end
 %%--------------------------------------------------------------------
--spec delete_sql(atom(), atom(), sql_value()) -> iolist().
+-spec delete_sql(table_id(), column_id(), sql_value()) -> iolist().
 delete_sql(Tbl, Key, Value) ->
-    ["DELETE FROM ", atom_to_list(Tbl), " WHERE ", atom_to_list(Key), 
+    ["DELETE FROM ", to_iolist(Tbl), " WHERE ", to_iolist(Key), 
      " = ", value_to_sql(Value), ";"].
 
 %%--------------------------------------------------------------------
-%% @spec drop_table_sql(Tbl) -> iolist()
-%%       Tbl = atom()
 %% @doc Drop the table Tbl from the database
 %% @end
 %%--------------------------------------------------------------------
--spec drop_table_sql(atom()) -> iolist().
+-spec drop_table_sql(table_id()) -> iolist().
 drop_table_sql(Tbl) ->
-    ["DROP TABLE ", atom_to_list(Tbl), ";"].
+    ["DROP TABLE ", to_iolist(Tbl), ";"].
 
 %%====================================================================
 %% Internal functions
@@ -418,6 +370,23 @@ indexed_column_sql({ColumnName, asc}) -> [atom_to_list(ColumnName), " ASC"];
 indexed_column_sql({ColumnName, desc}) -> [atom_to_list(ColumnName), " DESC"];
 indexed_column_sql(ColumnName) -> atom_to_list(ColumnName).
 
+
+encode_table_id(A) when is_atom(A) ->
+    {"am", atom_to_list(A)};
+encode_table_id(B) when is_binary(B) ->
+    {"bin", B};
+encode_table_id(L) when is_list(L) ->
+    {"lst", L}.
+
+to_iolist(A) when is_atom(A) ->
+    atom_to_list(A);
+to_iolist(L) when is_list(L) ->
+    L;
+to_iolist(B) when is_binary(B) ->
+    B.
+
+
+
 %%--------------------------------------------------------------------
 %% @type sql_value() = number() | 'null' | iodata().
 %% 
@@ -441,16 +410,16 @@ quote_test() ->
 
 create_table_sql_test() ->
     ?assertFlat(
-        "CREATE TABLE user (id INTEGER PRIMARY KEY, name TEXT);",
+        "CREATE TABLE user (id INTEGER PRIMARY KEY, name TEXT, CHECK ('am'='am'));",
         create_table_sql(user, [{id, integer, [primary_key]}, {name, text}])),
     ?assertFlat(
-        "CREATE TABLE user (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT);",
-        create_table_sql(user, [{id, integer, [{primary_key, autoincrement}]}, {name, text}])),
+        "CREATE TABLE user (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, CHECK ('bin'='bin'));",
+        create_table_sql(<<"user">>, [{id, integer, [{primary_key, autoincrement}]}, {name, text}])),
     ?assertFlat(
-        "CREATE TABLE user (id INTEGER PRIMARY KEY DESC, name TEXT);",
-        create_table_sql(user, [{id, integer, [{primary_key, desc}]}, {name, text}])),
+        "CREATE TABLE user (id INTEGER PRIMARY KEY DESC, name TEXT, CHECK ('lst'='lst'));",
+        create_table_sql("user", [{id, integer, [{primary_key, desc}]}, {name, text}])),
     ?assertFlat(
-        "CREATE TABLE user (id INTEGER, name TEXT, PRIMARY KEY(id));",
+        "CREATE TABLE user (id INTEGER, name TEXT, PRIMARY KEY(id), CHECK ('am'='am'));",
         create_table_sql(user, 
                          [{id, integer}, {name, text}], 
                          [{primary_key, [id]}])).
@@ -477,12 +446,12 @@ read_sql_test() ->
         read_sql(user, id, 1)),
     ?assertFlat(
         "SELECT id, name FROM user WHERE id = 1;",
-        read_sql(user, id, 1, [id, name])).
+        read_sql(user, <<"id">>, 1, [id, "name"])).
 
 delete_sql_test() ->
     ?assertFlat(
         "DELETE FROM user WHERE id = 1;",
-        delete_sql(user, id, 1)).
+        delete_sql(user, "id", 1)).
 
 drop_table_sql_test() ->
     ?assertFlat(

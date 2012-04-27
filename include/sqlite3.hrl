@@ -20,6 +20,9 @@
 -endif.
 
 -define(NULL_ATOM, null).
+-type sql_id() :: atom() | binary() | string().
+-type table_id() :: sql_id().
+-type column_id() :: sql_id().
 -type sql_value() :: number() | ?NULL_ATOM | iodata() | {blob, binary()}.
 -type sql_type() :: integer | text | double | real | blob | string().
 
@@ -30,9 +33,9 @@
 -type column_constraints() :: column_constraint() | [column_constraint()].
 -type table_constraint() :: {primary_key, [atom()]} | {unique, [atom()]}.
 -type table_constraints() :: table_constraint() | [table_constraint()].
--type table_info() :: [{atom(), sql_type()} | {atom(), sql_type(), column_constraints()}].
+-type table_info() :: [{column_id(), sql_type()} | {column_id(), sql_type(), column_constraints()}].
 
--type sqlite_error() :: {error, integer(), string()}.
+-type sqlite_error() :: {error, integer(), string()} | {error, term()}.
 -type sql_params() :: [sql_value() | {atom() | string() | integer(), sql_value()}].
 -type sql_non_query_result() :: ok | sqlite_error() | {rowid, integer()}.
--type sql_result() :: sql_non_query_result() | [{columns, [string()]} | {rows, [tuple()]}].
+-type sql_result() :: sql_non_query_result() | [{columns, [column_id()]} | {rows, [tuple()]} | sqlite_error()].

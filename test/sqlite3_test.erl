@@ -42,13 +42,15 @@ all_test_() ->
      fun close_db/1,
      [?FuncTest(basic_functionality),
       ?FuncTest(parametrized),
+      ?FuncTest(negative),
       ?FuncTest(blob),
       ?FuncTest(escaping),
       ?FuncTest(select_many_records),
       ?FuncTest(nonexistent_table_info),
       ?FuncTest(large_number),
       ?FuncTest(unicode),
-      ?FuncTest(acc_string_encoding)]}.
+      ?FuncTest(acc_string_encoding),
+      ?FuncTest(large_offset)]}.
 
 open_db() ->
     sqlite3:open(ct, [in_memory]).
@@ -84,7 +86,7 @@ basic_functionality() ->
         sqlite3:table_info(ct, user)),
     ?assertEqual(
         {rowid, 1}, 
-        sqlite3:write(ct, user, [{name, "abby"}, {age, 20}, {wage, 2000}])),
+        sqlite3:write(ct, user, [{name, "abby"}, {age, 20}, {<<"wage">>, 2000}])),
     ?assertEqual(
         {rowid, 2}, 
         sqlite3:write(ct, user, [{name, "marge"}, {age, 30}, {wage, 2000}])),
@@ -127,6 +129,10 @@ parametrized() ->
     sqlite3:sql_exec(ct, "INSERT INTO user1 (id, name) VALUES (?3, ?5)", [{3, 2}, {5, "joe"}]),
     sqlite3:sql_exec(ct, "INSERT INTO user1 (id, name) VALUES (:id, @name)", [{":id", 3}, {'@name', <<"jack">>}]),
     sqlite3:sql_exec(ct, "INSERT INTO user1 (id, name) VALUES (?, ?)", [4, "james"]),
+    ?WARN_ERROR_MESSAGE,
+    ?assertMatch(
+        {error, _, _},
+        sqlite3:sql_exec(ct, "INSERT INTO user1 (id, name) VALUES (?, ?)", [4, bad_sql_value])),
     ?assertEqual(
         [{columns, ["id", "name"]}, 
          {rows, [{1, <<"john">>}, {2, <<"joe">>}, {3, <<"jack">>}, {4, <<"james">>}]}], 
@@ -139,6 +145,12 @@ parametrized() ->
         [{columns, ["i", "d", "b"]}, 
          {rows, [{null, 1.0, {blob, <<1,0,0>>}}]}],
         sqlite3:read_all(ct, user1)).
+
+negative() ->
+    drop_table_if_exists(ct, negative),
+    sqlite3:create_table(ct, negative, [{id, int}]),
+    ?assertEqual({error, badarg}, 
+                 sqlite3:write(ct, negative, [{id, bad_sql_value}])).
 
 blob() ->
     drop_table_if_exists(ct, blobs),
@@ -210,7 +222,6 @@ large_number() ->
     Query1 = io_lib:format("select ~p, ~p", [N1, N2]),
     ?assertEqual([{N1, N2}], rows(sqlite3:sql_exec(ct, Query1))),
     Query2 = "select ?, ?",
-    ?debugMsg("Error message \"sqlite3 driver error: bind or column index out of range\" should be shown..."),
     ?assertEqual([{N1, N2}], rows(sqlite3:sql_exec(ct, Query2, [N1, N2]))),
     ?assertNot([{N1 + 1, N2 - 1}] == rows(sqlite3:sql_exec(ct, Query2, [N1 + 1, N2 - 1]))).
 
@@ -235,6 +246,7 @@ prepared_test() ->
     sqlite3:write(prepared, user, [{name, "marge"}, {age, 30}, {wage, 2000}]),
     {ok, Ref1} = sqlite3:prepare(prepared, "SELECT * FROM user"),
     {ok, Ref2} = sqlite3:prepare(prepared, "SELECT * FROM user WHERE name = ?"),
+    ?assertMatch({error, _}, sqlite3:next(prepared, make_ref())),
     ?assertEqual(Columns, sqlite3:columns(prepared, Ref1)),
     ?assertEqual(Abby, sqlite3:next(prepared, Ref1)),
     ?assertEqual(ok, sqlite3:reset(prepared, Ref1)),
@@ -242,7 +254,7 @@ prepared_test() ->
     ?assertEqual(Marge, sqlite3:next(prepared, Ref1)),
     ?assertEqual(done, sqlite3:next(prepared, Ref1)),
     ?assertEqual(ok, sqlite3:finalize(prepared, Ref1)),
-    ?assertMatch({error, _, _}, sqlite3:next(prepared, Ref1)),
+    ?assertMatch({error, _}, sqlite3:next(prepared, Ref1)),
     ?assertEqual(ok, sqlite3:reset(prepared, Ref2)),
     ?assertEqual(ok, sqlite3:bind(prepared, Ref2, ["marge"])),
     ?assertEqual(Marge, sqlite3:next(prepared, Ref2)),
@@ -262,7 +274,6 @@ script_test() ->
                   "INSERT INTO person (id) VALUES (2);",
                   "   "
                  ], "\n"),
-    ?WARN_ERROR_MESSAGE,
     ?assertEqual(
         [ok, ok, ok], 
         sqlite3:sql_exec_script(script, Script)),
@@ -284,6 +295,13 @@ script_test() ->
         [ok, {error, 1, "near \"SYNTAX\": syntax error"}], 
         sqlite3:sql_exec_script(script, BadScript)),
     sqlite3:close(script).
+
+large_offset() ->
+	drop_table_if_exists(ct, large_offset),
+	ok = sqlite3:create_table(ct, large_offset, [{id, integer}]),
+	?assertEqual(
+	    [{columns, ["id"]}, {rows, []}, {error, 20, "datatype mismatch"}],
+	    sqlite3:sql_exec(ct, "select * from large_offset limit 1 offset 9223372036854775808")).
 
 % create, read, update, delete
 %%====================================================================

@@ -18,6 +18,10 @@
 #error "SQLite3 of version 3.6.1 minumum required"
 #endif
 
+#if defined(_MSC_VER)
+#pragma warning(disable: 4201)
+#endif
+
 // Path to file where data will be stored. 
 // It will be created if it doesn't exist
 #define DB_PATH "./store.db"
@@ -107,3 +111,8 @@ static void sql_exec_async(void *async_command);
 static void sql_free_async(void *async_command);
 static void ready_async(ErlDrvData drv_data, ErlDrvThreadData thread_data);
 static int unknown(sqlite3_drv_t *bdb_drv, char *buf, int len);
+
+
+#if defined(_MSC_VER)
+#pragma warning(default: 4201)
+#endif
